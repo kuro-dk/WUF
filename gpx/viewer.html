@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPX Flight Viewer · 3D</title>
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/cesium@1.118.0/Build/Cesium/Widgets/widgets.css"
+  />
+  <style>
+    :root {
+      --bg-panel: rgba(8, 14, 30, 0.88);
+      --bg-panel-light: rgba(20, 30, 50, 0.85);
+      --border: rgba(120, 180, 255, 0.25);
+      --accent: #4cc9ff;
+      --accent-2: #7cffb2;
+      --accent-hot: #ff7a59;
+      --text: #e8eef7;
+      --text-dim: #9aa6b8;
+    }
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+    }
+    #cesiumContainer {
+      position: absolute;
+      inset: 0;
+    }
+    /* hide default cesium chrome we don't want */
+    .cesium-viewer-bottom {
+      display: none !important;
+    }
+    .cesium-credit-textContainer,
+    .cesium-credit-logoContainer,
+    .cesium-credit-expand-link {
+      display: none !important;
+    }
+
+    #panel {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      width: 280px;
+      padding: 14px 16px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 6px 30px rgba(0, 0, 0, 0.4);
+      z-index: 10;
+    }
+    #panel h1 {
+      margin: 0 0 4px 0;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #panel h1 .icon {
+      font-size: 18px;
+    }
+    #panel .sub {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .row > * {
+      flex: 1;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 8px 12px;
+      background: rgba(76, 201, 255, 0.12);
+      border: 1px solid rgba(76, 201, 255, 0.4);
+      color: var(--text);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s ease;
+      text-align: center;
+      user-select: none;
+    }
+    .btn:hover {
+      background: rgba(76, 201, 255, 0.25);
+    }
+    .btn.primary {
+      background: var(--accent);
+      color: #001525;
+      font-weight: 600;
+      border-color: var(--accent);
+    }
+    .btn.primary:hover {
+      background: #71d5ff;
+    }
+    .file-input {
+      display: none;
+    }
+
+    .stats {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+    }
+    .stat .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: var(--text-dim);
+    }
+    .stat .value {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-top: 1px;
+    }
+    .stat.full {
+      grid-column: span 2;
+    }
+
+    #help {
+      position: absolute;
+      bottom: 140px;
+      left: 16px;
+      padding: 8px 12px;
+      background: var(--bg-panel-light);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 11px;
+      color: var(--text-dim);
+      z-index: 10;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    #help kbd {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 1px 5px;
+      border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-family: inherit;
+      font-size: 10px;
+    }
+
+    #chart-container {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 120px;
+      background: linear-gradient(
+        180deg,
+        rgba(8, 14, 30, 0) 0%,
+        rgba(8, 14, 30, 0.85) 30%,
+        rgba(8, 14, 30, 0.95) 100%
+      );
+      padding: 12px 16px 14px 16px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #chart-title {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    #altitudeChart {
+      width: 100%;
+      height: 80px;
+      display: block;
+    }
+
+    #dropOverlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(76, 201, 255, 0.12);
+      border: 3px dashed var(--accent);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--accent);
+      z-index: 100;
+      pointer-events: none;
+    }
+    #dropOverlay.active {
+      display: flex;
+    }
+
+    #empty {
+      position: absolute;
+      top: 45%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: var(--text-dim);
+      z-index: 5;
+      pointer-events: none;
+      max-width: 320px;
+    }
+    #empty .big {
+      font-size: 18px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    #empty .small {
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer"></div>
+
+  <div id="empty">
+    <div class="big">✈️ Drop a GPX file or click "Sample"</div>
+    <div class="small">
+      Your flight path will appear in 3D on satellite imagery.<br />
+      Drag to rotate, right-drag to tilt, scroll to zoom.
+    </div>
+  </div>
+
+  <div id="panel">
+    <h1><span class="icon">✈️</span> GPX Flight Viewer</h1>
+    <div class="sub">3D satellite view of your track</div>
+
+    <input
+      type="file"
+      id="fileInput"
+      class="file-input"
+      accept=".gpx,application/gpx+xml,text/xml"
+    />
+
+    <div class="row">
+      <label for="fileInput" class="btn">📁 Open GPX</label>
+      <button id="sampleBtn" class="btn primary">🚀 Sample flight</button>
+    </div>
+
+    <div class="stats" id="stats" style="display: none">
+      <div class="stat full">
+        <div class="label">Track</div>
+        <div class="value" id="s-name">—</div>
+      </div>
+      <div class="stat">
+        <div class="label">Distance</div>
+        <div class="value" id="s-dist">—</div>
+      </div>
+      <div class="stat">
+        <div class="label">Points</div>
+        <div class="value" id="s-pts">—</div>
+      </div>
+      <div class="stat">
+        <div class="label">Max altitude</div>
+        <div class="value" id="s-maxalt">—</div>
+      </div>
+      <div class="stat">
+        <div class="label">Duration</div>
+        <div class="value" id="s-dur">—</div>
+      </div>
+      <div class="stat full">
+        <div class="label">Avg speed</div>
+        <div class="value" id="s-speed">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="help">
+    <kbd>Drag</kbd> rotate · <kbd>Right-drag</kbd> tilt · <kbd>Scroll</kbd> zoom
+  </div>
+
+  <div id="chart-container">
+    <div id="chart-title">Altitude profile</div>
+    <canvas id="altitudeChart"></canvas>
+  </div>
+
+  <div id="dropOverlay">Drop your GPX file here</div>
+
+  <script>
+    window.CESIUM_BASE_URL =
+      "https://cdn.jsdelivr.net/npm/cesium@1.118.0/Build/Cesium/";
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/cesium@1.118.0/Build/Cesium/Cesium.js"></script>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // No Ion token needed — we use ESRI World Imagery (XYZ tiles).
+      Cesium.Ion.defaultAccessToken = "";
+
+      // ---------- Cesium viewer ----------
+      const viewer = new Cesium.Viewer("cesiumContainer", {
+        baseLayer: false, // skip default Bing/Ion imagery
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: false,
+        sceneModePicker: true,
+        navigationHelpButton: false,
+        animation: false,
+        timeline: false,
+        fullscreenButton: true,
+        infoBox: false,
+        selectionIndicator: false,
+        requestRenderMode: false,
+        terrainProvider: new Cesium.EllipsoidTerrainProvider(),
+      });
+
+      // Add tokenless ESRI World Imagery (satellite)
+      viewer.imageryLayers.addImageryProvider(
+        new Cesium.UrlTemplateImageryProvider({
+          url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          maximumLevel: 19,
+          credit: "Imagery © Esri",
+        })
+      );
+
+      // Scene tweaks for a nicer aerial look
+      viewer.scene.globe.enableLighting = false;
+      viewer.scene.skyAtmosphere.show = true;
+      viewer.scene.fog.enabled = true;
+      viewer.scene.fog.density = 0.0001;
+      viewer.scene.globe.depthTestAgainstTerrain = false;
+
+      // Hide Cesium credit (we use ESRI imagery anyway)
+      if (viewer.cesiumWidget && viewer.cesiumWidget.creditContainer) {
+        viewer.cesiumWidget.creditContainer.style.display = "none";
+      }
+
+      // Default camera: nice oblique view of Earth
+      viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(-30, 25, 22000000),
+        orientation: {
+          heading: 0,
+          pitch: -Cesium.Math.PI_OVER_TWO,
+          roll: 0,
+        },
+      });
+
+      let currentDataSource = null;
+      let lastPoints = null;
+
+      // ===================== GPX Parsing =====================
+      function parseGPX(text) {
+        const parser = new DOMParser();
+        // NOTE: DOMParser only accepts a fixed set of MIME types.
+        // "application/gpx+xml" isn't in the list, so we use "text/xml".
+        // GPX is just XML, so this parses identically.
+        const doc = parser.parseFromString(text, "text/xml");
+        const parserError = doc.querySelector("parsererror");
+        if (parserError) throw new Error("Invalid GPX file");
+
+        const nameEl = doc.querySelector("trk > name, rte > name, metadata > name");
+        const trackName = nameEl ? nameEl.textContent.trim() : "GPX Track";
+
+        const pts = Array.from(doc.querySelectorAll("trkpt, rtept"))
+          .map((pt) => {
+            const lat = parseFloat(pt.getAttribute("lat"));
+            const lon = parseFloat(pt.getAttribute("lon"));
+            if (isNaN(lat) || isNaN(lon)) return null;
+            const eleEl = pt.querySelector("ele");
+            const timeEl = pt.querySelector("time");
+            return {
+              lon,
+              lat,
+              ele: eleEl ? parseFloat(eleEl.textContent) : 0,
+              time: timeEl ? new Date(timeEl.textContent) : null,
+            };
+          })
+          .filter(Boolean);
+
+        return { name: trackName, points: pts };
+      }
+
+      // ===================== Stats =====================
+      function haversineKm(a, b) {
+        const R = 6371; // km
+        const toRad = (d) => (d * Math.PI) / 180;
+        const dLat = toRad(b.lat - a.lat);
+        const dLon = toRad(b.lon - a.lon);
+        const lat1 = toRad(a.lat);
+        const lat2 = toRad(b.lat);
+        const x =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(x));
+      }
+
+      function computeStats(pts) {
+        let totalDist = 0;
+        let maxAlt = -Infinity;
+        let minAlt = Infinity;
+        let maxSpeed = 0;
+        for (let i = 0; i < pts.length; i++) {
+          if (pts[i].ele > maxAlt) maxAlt = pts[i].ele;
+          if (pts[i].ele < minAlt) minAlt = pts[i].ele;
+          if (i > 0) {
+            const segDist = haversineKm(pts[i - 1], pts[i]);
+            totalDist += segDist;
+            if (pts[i].time && pts[i - 1].time) {
+              const dt = (pts[i].time - pts[i - 1].time) / 1000;
+              if (dt > 0) {
+                const v = (segDist / dt) * 3600; // km/h
+                if (v > maxSpeed && v < 2000) maxSpeed = v; // sanity cap
+              }
+            }
+          }
+        }
+        const duration =
+          pts[0].time && pts[pts.length - 1].time
+            ? (pts[pts.length - 1].time - pts[0].time) / 1000
+            : null;
+        const avgSpeed =
+          duration && duration > 0 ? totalDist / (duration / 3600) : null;
+        return { totalDist, maxAlt, minAlt, duration, avgSpeed, maxSpeed };
+      }
+
+      // ===================== Render Track =====================
+      function renderTrack(trackName, pts) {
+        if (pts.length < 2) {
+          alert("GPX file has fewer than 2 valid points.");
+          return;
+        }
+
+        // Clear previous
+        if (currentDataSource) {
+          viewer.dataSources.remove(currentDataSource);
+          currentDataSource = null;
+        }
+
+        const positions = pts.map((p) =>
+          Cesium.Cartesian3.fromDegrees(p.lon, p.lat, p.ele)
+        );
+
+        const ds = new Cesium.CustomDataSource(trackName);
+
+        // Outer soft glow halo
+        ds.entities.add({
+          polyline: {
+            positions,
+            width: 9,
+            material: Cesium.Color.fromCssColorString("#4cc9ff").withAlpha(0.18),
+            arcType: Cesium.ArcType.NONE,
+            clampToGround: false,
+          },
+        });
+
+        // Main glowing flight path
+        ds.entities.add({
+          name: trackName,
+          polyline: {
+            positions,
+            width: 3.5,
+            material: new Cesium.PolylineGlowMaterialProperty({
+              glowPower: 0.22,
+              taperPower: 1.0,
+              color: Cesium.Color.fromCssColorString("#4cc9ff"),
+            }),
+            arcType: Cesium.ArcType.NONE,
+            clampToGround: false,
+          },
+        });
+
+        // Start marker
+        ds.entities.add({
+          position: positions[0],
+          point: {
+            pixelSize: 14,
+            color: Cesium.Color.fromCssColorString("#7CFFB2"),
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 2,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          label: {
+            text: "START",
+            font: "600 12px -apple-system, sans-serif",
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(14, 0),
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+
+        // End marker
+        ds.entities.add({
+          position: positions[positions.length - 1],
+          point: {
+            pixelSize: 14,
+            color: Cesium.Color.fromCssColorString("#FF7A59"),
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 2,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          label: {
+            text: "END",
+            font: "600 12px -apple-system, sans-serif",
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(14, 0),
+            verticalOrigin: Cesium.VerticalOrigin.CENTER,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        });
+
+        viewer.dataSources.add(ds);
+        currentDataSource = ds;
+        lastPoints = pts;
+
+        // Stats & chart
+        const stats = computeStats(pts);
+        updateStatsUI(trackName, pts, stats);
+        drawAltitudeChart(pts);
+        document.getElementById("empty").style.display = "none";
+
+        // Fly to a nice oblique view of the whole track
+        const sphere = Cesium.BoundingSphere.fromPoints(positions);
+        viewer.camera.flyToBoundingSphere(sphere, {
+          duration: 1.8,
+          offset: new Cesium.HeadingPitchRange(
+            Cesium.Math.toRadians(30),
+            Cesium.Math.toRadians(-35),
+            sphere.radius * 2.6
+          ),
+        });
+      }
+
+      // ===================== Formatting =====================
+      function fmtKm(km) {
+        if (!isFinite(km) || km === 0) return "—";
+        return km < 10 ? km.toFixed(2) + " km" : Math.round(km) + " km";
+      }
+      function fmtAlt(m) {
+        if (!isFinite(m)) return "—";
+        return Math.round(m) + " m";
+      }
+      function fmtDuration(s) {
+        if (s == null || !isFinite(s) || s <= 0) return "—";
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = Math.floor(s % 60);
+        if (h > 0) return h + "h " + m + "m";
+        if (m > 0) return m + "m " + sec + "s";
+        return sec + "s";
+      }
+      function fmtSpeed(kmh) {
+        if (kmh == null || !isFinite(kmh) || kmh <= 0) return "—";
+        return Math.round(kmh) + " km/h";
+      }
+
+      function updateStatsUI(name, pts, stats) {
+        document.getElementById("stats").style.display = "grid";
+        document.getElementById("s-name").textContent = name;
+        document.getElementById("s-dist").textContent = fmtKm(stats.totalDist);
+        document.getElementById("s-pts").textContent = pts.length.toLocaleString();
+        document.getElementById("s-maxalt").textContent = fmtAlt(stats.maxAlt);
+        document.getElementById("s-dur").textContent = fmtDuration(stats.duration);
+        document.getElementById("s-speed").textContent = fmtSpeed(stats.avgSpeed);
+      }
+
+      // ===================== Altitude Chart =====================
+      function drawAltitudeChart(pts) {
+        const canvas = document.getElementById("altitudeChart");
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+        canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const W = rect.width;
+        const H = rect.height;
+        ctx.clearRect(0, 0, W, H);
+
+        if (pts.length < 2) return;
+
+        let minAlt = Infinity;
+        let maxAlt = -Infinity;
+        for (const p of pts) {
+          if (p.ele < minAlt) minAlt = p.ele;
+          if (p.ele > maxAlt) maxAlt = p.ele;
+        }
+        const range = Math.max(1, maxAlt - minAlt);
+        const padY = 8;
+
+        // Grid
+        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= 4; i++) {
+          const y = padY + ((H - padY * 2) * i) / 4;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(W, y);
+          ctx.stroke();
+        }
+
+        // Filled area
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, "rgba(76, 201, 255, 0.6)");
+        grad.addColorStop(1, "rgba(76, 201, 255, 0.05)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(0, H);
+        for (let i = 0; i < pts.length; i++) {
+          const x = (i / (pts.length - 1)) * W;
+          const y = H - padY - ((pts[i].ele - minAlt) / range) * (H - padY * 2);
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(W, H);
+        ctx.closePath();
+        ctx.fill();
+
+        // Stroke
+        ctx.strokeStyle = "#4cc9ff";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for (let i = 0; i < pts.length; i++) {
+          const x = (i / (pts.length - 1)) * W;
+          const y = H - padY - ((pts[i].ele - minAlt) / range) * (H - padY * 2);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Labels
+        ctx.fillStyle = "rgba(255,255,255,0.55)";
+        ctx.font = "10px -apple-system, sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText(Math.round(maxAlt) + " m", 4, padY + 9);
+        ctx.fillText(Math.round(minAlt) + " m", 4, H - 4);
+      }
+
+      // ===================== File Handling =====================
+      function loadFile(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          try {
+            const { name, points } = parseGPX(e.target.result);
+            renderTrack(name, points);
+          } catch (err) {
+            alert("Could not parse GPX: " + err.message);
+          }
+        };
+        reader.onerror = () => alert("Could not read file.");
+        reader.readAsText(file);
+      }
+
+      document.getElementById("fileInput").addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file) loadFile(file);
+        e.target.value = ""; // allow re-loading the same file
+      });
+
+      // Drag & drop with counter to avoid flicker
+      const dropOverlay = document.getElementById("dropOverlay");
+      let dragCounter = 0;
+      document.addEventListener("dragenter", (e) => {
+        e.preventDefault();
+        dragCounter++;
+        dropOverlay.classList.add("active");
+      });
+      document.addEventListener("dragover", (e) => {
+        e.preventDefault();
+      });
+      document.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          dropOverlay.classList.remove("active");
+        }
+      });
+      document.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dragCounter = 0;
+        dropOverlay.classList.remove("active");
+        const file = e.dataTransfer.files[0];
+        if (file) loadFile(file);
+      });
+
+      // Sample flight
+      document.getElementById("sampleBtn").addEventListener("click", () => {
+        try {
+          const text = generateSampleGPX();
+          const { name, points } = parseGPX(text);
+          renderTrack(name, points);
+        } catch (err) {
+          alert("Could not load sample: " + err.message);
+        }
+      });
+
+      // ===================== Sample GPX =====================
+      function smoothstep(t) {
+        t = Math.max(0, Math.min(1, t));
+        return t * t * (3 - 2 * t);
+      }
+
+      function generateSampleGPX() {
+        // Meandering transcontinental-ish flight, ~1500km, ~3h
+        const startLat = 37.6213,
+          startLon = -122.379; // SFO area
+        const endLat = 40.6413,
+          endLon = -73.7781; // JFK area
+
+        const numPoints = 240;
+        const cruiseAlt = 11500; // meters
+        const startTime = new Date("2025-08-12T14:30:00Z");
+        const points = [];
+
+        for (let i = 0; i < numPoints; i++) {
+          const t = i / (numPoints - 1);
+          // path with a gentle northward curve
+          const lat = startLat + (endLat - startLat) * t + Math.sin(t * Math.PI) * 1.6;
+          const lon = startLon + (endLon - startLon) * t;
+
+          // climb → cruise → descent
+          let alt;
+          if (t < 0.08) alt = cruiseAlt * smoothstep(t / 0.08);
+          else if (t > 0.92) alt = cruiseAlt * smoothstep((1 - t) / 0.08);
+          else alt = cruiseAlt + Math.sin(t * Math.PI * 6) * 250;
+
+          // 3h flight with mild speed wobble
+          const baseSeconds = t * 3 * 3600;
+          const wobble = Math.sin(t * Math.PI * 8) * 25 * t;
+          const time = new Date(startTime.getTime() + (baseSeconds + wobble) * 1000);
+
+          points.push({ lat, lon, ele: alt, time });
+        }
+
+        return (
+          `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="gpx-flight-viewer-sample" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Sample Flight SFO → JFK</name>
+    <time>${startTime.toISOString()}</time>
+  </metadata>
+  <trk>
+    <name>Sample Flight SFO → JFK</name>
+    <trkseg>
+` +
+          points
+            .map(
+              (p) =>
+                `      <trkpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(
+                  6
+                )}"><ele>${p.ele.toFixed(
+                  1
+                )}</ele><time>${p.time.toISOString()}</time></trkpt>`
+            )
+            .join("\n") +
+          `
+    </trkseg>
+  </trk>
+</gpx>`
+        );
+      }
+
+      // Resize handling for the chart
+      window.addEventListener("resize", () => {
+        if (lastPoints) drawAltitudeChart(lastPoints);
+      });
+    })();
+  </script>
+</body>
+</html>
